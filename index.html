@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>DrivePlayer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f0f;--bg2:#1a1a1a;--bg3:#272727;--bg4:#3a3a3a;
+  --tx:#f1f1f1;--tx2:#aaa;--tx3:#717171;
+  --acc:#3ea6ff;--acc2:#65b8ff;--red:#ff4e45;
+  --bdr:#303030;--mini-h:68px;--top-h:56px;
+}
+html,body{height:100%;background:var(--bg);color:var(--tx);
+  font-family:'Noto Sans KR',sans-serif;overflow:hidden;
+  -webkit-tap-highlight-color:transparent}
+button{cursor:pointer;border:none;background:none;color:inherit;font-family:inherit}
+input{font-family:inherit}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+
+/* ===== SCREENS ===== */
+.screen{display:none;flex-direction:column;height:100%}
+.screen.active{display:flex}
+
+/* ===== LOGIN ===== */
+#loginScreen{align-items:center;justify-content:center;gap:24px;padding:32px;text-align:center}
+.login-logo{width:88px;height:88px;background:var(--acc);border-radius:20px;
+  display:flex;align-items:center;justify-content:center;font-size:40px;
+  box-shadow:0 8px 32px rgba(62,166,255,.3)}
+.login-title{font-size:28px;font-weight:700;letter-spacing:-.5px}
+.login-sub{color:var(--tx2);font-size:14px;margin-top:-12px}
+.btn-google{display:flex;align-items:center;gap:12px;background:var(--bg3);
+  border:1px solid var(--bdr);padding:14px 32px;border-radius:24px;
+  font-size:15px;font-weight:500;transition:all .2s;margin-top:16px}
+.btn-google:hover{background:var(--bg4);border-color:var(--tx3)}
+.btn-google svg{width:20px;height:20px}
+
+/* ===== FOLDER INPUT ===== */
+#folderScreen{align-items:center;justify-content:center;gap:20px;padding:32px}
+.folder-icon{font-size:48px;opacity:.7}
+.folder-wrap{width:100%;max-width:500px}
+.folder-input{width:100%;padding:14px 16px;background:var(--bg2);border:1px solid var(--bdr);
+  border-radius:12px;color:var(--tx);font-size:14px;outline:none;transition:border-color .2s}
+.folder-input:focus{border-color:var(--acc)}
+.folder-input::placeholder{color:var(--tx3)}
+.folder-error{color:var(--red);font-size:13px;min-height:20px;margin-top:4px}
+.btn-primary{width:100%;max-width:500px;padding:14px;background:var(--acc);color:#000;
+  border-radius:24px;font-size:15px;font-weight:700;transition:background .2s}
+.btn-primary:hover{background:var(--acc2)}
+.btn-text{color:var(--tx2);font-size:13px;padding:8px 16px;border-radius:16px;transition:background .2s}
+.btn-text:hover{background:var(--bg3)}
+
+/* ===== HOME (GRID) ===== */
+#homeScreen{overflow:hidden}
+.topbar{height:var(--top-h);display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;background:var(--bg);border-bottom:1px solid var(--bdr);flex-shrink:0;z-index:10}
+.topbar-title{font-size:18px;font-weight:700;display:flex;align-items:center;gap:8px}
+.topbar-title span{color:var(--acc)}
+.topbar-actions{display:flex;gap:4px}
+.btn-icon{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;transition:background .2s;font-size:18px}
+.btn-icon:hover{background:var(--bg3)}
+
+.grid-wrap{flex:1;overflow-y:auto;padding:12px}
+.grid-wrap.with-mini{padding-bottom:calc(var(--mini-h) + 12px)}
+.file-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.file-card{background:var(--bg2);border-radius:12px;overflow:hidden;cursor:pointer;
+  transition:transform .15s,box-shadow .15s}
+.file-card:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.file-card:active{transform:scale(.97)}
+.file-thumb{aspect-ratio:16/9;background:var(--bg3);display:flex;align-items:center;
+  justify-content:center;position:relative;overflow:hidden}
+.file-thumb img{width:100%;height:100%;object-fit:cover}
+.file-thumb .play-icon{position:absolute;font-size:32px;opacity:.8;
+  text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.file-thumb .type-badge{position:absolute;bottom:6px;right:6px;
+  background:rgba(0,0,0,.7);padding:2px 6px;border-radius:4px;font-size:11px;color:var(--tx2)}
+.file-info{padding:10px}
+.file-name{font-size:13px;font-weight:500;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.file-size{font-size:11px;color:var(--tx3);margin-top:4px}
+.grid-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  height:100%;gap:12px;color:var(--tx2)}
+.grid-empty .icon{font-size:48px;opacity:.5}
+
+.grid-loading{display:flex;align-items:center;justify-content:center;height:100%}
+
+/* ===== PLAYER SCREEN ===== */
+#playerScreen{background:#000}
+.player-top{height:48px;display:flex;align-items:center;padding:0 8px;
+  background:rgba(0,0,0,.6);position:absolute;top:0;left:0;right:0;z-index:20}
+.player-title{flex:1;font-size:14px;font-weight:500;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;padding:0 8px}
+
+/* Video container */
+.video-wrap{position:relative;width:100%;background:#000;flex-shrink:0}
+.video-wrap.fullscreen-video{flex:1}
+.video-wrap video{width:100%;height:100%;display:block;background:#000}
+.video-wrap audio{display:none}
+
+/* Audio artwork */
+.audio-art{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:16px;background:linear-gradient(135deg,#1a1a2e,#16213e)}
+.audio-art .icon{font-size:72px;opacity:.6}
+.audio-art .title{font-size:16px;font-weight:500;text-align:center;
+  padding:0 24px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* Custom controls */
+.controls{padding:12px 16px;background:var(--bg);flex-shrink:0}
+.progress-wrap{width:100%;height:20px;display:flex;align-items:center;cursor:pointer;
+  padding:6px 0;margin-bottom:8px}
+.progress-bar{width:100%;height:4px;background:var(--bg4);border-radius:2px;
+  position:relative;overflow:visible}
+.progress-buffered{position:absolute;height:100%;background:rgba(255,255,255,.2);
+  border-radius:2px;left:0;top:0;transition:width .3s}
+.progress-played{position:absolute;height:100%;background:var(--red);
+  border-radius:2px;left:0;top:0}
+.progress-thumb{position:absolute;width:14px;height:14px;background:var(--red);
+  border-radius:50%;top:50%;transform:translate(-50%,-50%);
+  opacity:0;transition:opacity .15s}
+.progress-wrap:hover .progress-thumb{opacity:1}
+.progress-wrap:hover .progress-bar{height:6px}
+
+.ctrl-row{display:flex;align-items:center;justify-content:space-between}
+.ctrl-left,.ctrl-right{display:flex;align-items:center;gap:4px}
+.ctrl-center{display:flex;align-items:center;gap:16px}
+.btn-ctrl{width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  border-radius:50%;font-size:20px;transition:background .15s}
+.btn-ctrl:hover{background:var(--bg3)}
+.btn-ctrl.big{width:48px;height:48px;font-size:28px}
+.time-display{font-size:12px;color:var(--tx2);min-width:100px}
+
+/* Buffering spinner */
+.buffering{position:absolute;inset:0;display:none;align-items:center;
+  justify-content:center;z-index:15;pointer-events:none}
+.buffering.active{display:flex}
+.spinner{width:48px;height:48px;border:4px solid rgba(255,255,255,.2);
+  border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Seek indicator */
+.seek-indicator{position:absolute;top:50%;transform:translateY(-50%);
+  background:rgba(0,0,0,.6);border-radius:50%;width:64px;height:64px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .2s;pointer-events:none;z-index:16}
+.seek-indicator.left{left:15%}
+.seek-indicator.right{right:15%}
+.seek-indicator.show{opacity:1}
+.seek-indicator .icon{font-size:24px}
+.seek-indicator .label{font-size:11px;font-weight:700;margin-top:2px}
+
+/* Double tap zones */
+.tap-zone{position:absolute;top:0;bottom:0;width:40%;z-index:12}
+.tap-zone.left{left:0}
+.tap-zone.right{right:0}
+
+/* Swipe seek overlay */
+.swipe-overlay{position:absolute;inset:0;z-index:14;touch-action:none}
+.swipe-indicator{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:rgba(0,0,0,.75);border-radius:12px;padding:12px 24px;
+  display:none;align-items:center;gap:12px;pointer-events:none;z-index:17;
+  backdrop-filter:blur(4px);min-width:160px;justify-content:center}
+.swipe-indicator.active{display:flex}
+.swipe-indicator .dir{font-size:20px}
+.swipe-indicator .time{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.swipe-indicator .diff{font-size:14px;color:var(--acc);font-weight:700}
+
+/* ===== MINI PLAYER ===== */
+.mini-player{position:fixed;bottom:0;left:0;right:0;height:var(--mini-h);
+  background:var(--bg2);border-top:1px solid var(--bdr);
+  display:none;align-items:center;z-index:100;
+  transition:transform .3s;cursor:pointer}
+.mini-player.active{display:flex}
+.mini-video{width:100px;height:100%;background:#000;flex-shrink:0;position:relative;overflow:hidden}
+.mini-video video{width:100%;height:100%;object-fit:cover}
+.mini-info{flex:1;padding:0 12px;overflow:hidden}
+.mini-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini-type{font-size:11px;color:var(--tx3)}
+.mini-actions{display:flex;flex-shrink:0;padding-right:8px}
+.mini-progress{position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--bg4)}
+.mini-progress-bar{height:100%;background:var(--red);transition:width .5s linear}
+
+/* ===== RESPONSIVE ===== */
+@media(min-width:640px){
+  .file-grid{grid-template-columns:repeat(3,1fr)}
+}
+@media(min-width:960px){
+  .file-grid{grid-template-columns:repeat(4,1fr)}
+}
+
+/* ===== UTILS ===== */
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN SCREEN ===== -->
+<div id="loginScreen" class="screen active">
+  <div class="login-logo">▶</div>
+  <div class="login-title">DrivePlayer</div>
+  <div class="login-sub">구글 드라이브에서 바로 재생</div>
+  <button class="btn-google" onclick="handleLogin()">
+    <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+    Google 계정으로 로그인
+  </button>
+</div>
+
+<!-- ===== FOLDER INPUT SCREEN ===== -->
+<div id="folderScreen" class="screen">
+  <div class="folder-icon">📁</div>
+  <div style="font-size:18px;font-weight:700">폴더 링크를 입력하세요</div>
+  <div class="folder-wrap">
+    <input id="folderInput" class="folder-input" placeholder="https://drive.google.com/drive/folders/..." 
+           onkeydown="if(event.key==='Enter')openFolder()">
+    <div id="folderError" class="folder-error"></div>
+  </div>
+  <button class="btn-primary" onclick="openFolder()">폴더 열기</button>
+  <button id="lastFolderBtn" class="btn-text hidden" onclick="useLastFolder()">📂 마지막 사용한 폴더</button>
+</div>
+
+<!-- ===== HOME SCREEN ===== -->
+<div id="homeScreen" class="screen">
+  <div class="topbar">
+    <div class="topbar-title"><span>▶</span> DrivePlayer</div>
+    <div class="topbar-actions">
+      <button class="btn-icon" onclick="refreshFiles()" title="새로고침">🔄</button>
+      <button class="btn-icon" onclick="changeFolder()" title="폴더 변경">📁</button>
+    </div>
+  </div>
+  <div id="gridWrap" class="grid-wrap">
+    <div id="fileGrid" class="file-grid"></div>
+  </div>
+</div>
+
+<!-- ===== PLAYER SCREEN ===== -->
+<div id="playerScreen" class="screen">
+  <!-- Video/Audio area -->
+  <div id="videoWrap" class="video-wrap">
+    <video id="videoEl" playsinline></video>
+
+    <!-- Audio artwork (shown for audio files) -->
+    <div id="audioArt" class="audio-art hidden">
+      <div class="icon">🎵</div>
+      <div id="audioTitle" class="title"></div>
+    </div>
+
+    <!-- Buffering spinner -->
+    <div id="buffering" class="buffering">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- Seek indicators -->
+    <div id="seekLeft" class="seek-indicator left">
+      <div class="icon">⏪</div>
+      <div class="label">5초</div>
+    </div>
+    <div id="seekRight" class="seek-indicator right">
+      <div class="icon">⏩</div>
+      <div class="label">5초</div>
+    </div>
+
+    <!-- Double-tap zones -->
+    <div class="tap-zone left" id="tapLeft"></div>
+    <div class="tap-zone right" id="tapRight"></div>
+
+    <!-- Swipe seek overlay (touch & drag) -->
+    <div class="swipe-overlay" id="swipeOverlay"></div>
+    <div class="swipe-indicator" id="swipeIndicator">
+      <span class="dir" id="swipeDir">⏩</span>
+      <span class="time" id="swipeTime">0:00</span>
+      <span class="diff" id="swipeDiff">+0초</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <!-- Progress bar -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="progress-bar">
+        <div id="progressBuffered" class="progress-buffered"></div>
+        <div id="progressPlayed" class="progress-played"></div>
+        <div id="progressThumb" class="progress-thumb"></div>
+      </div>
+    </div>
+
+    <div class="ctrl-row">
+      <div class="ctrl-left">
+        <span id="timeDisplay" class="time-display">0:00 / 0:00</span>
+      </div>
+      <div class="ctrl-center">
+        <button class="btn-ctrl" onclick="playPrev()" title="이전">⏮</button>
+        <button class="btn-ctrl" onclick="seekBy(-5)" title="5초 뒤로">⏪</button>
+        <button id="playBtn" class="btn-ctrl big" onclick="togglePlay()" title="재생/일시정지">▶️</button>
+        <button class="btn-ctrl" onclick="seekBy(5)" title="5초 앞으로">⏩</button>
+        <button class="btn-ctrl" onclick="playNext()" title="다음">⏭</button>
+      </div>
+      <div class="ctrl-right">
+        <button class="btn-ctrl" onclick="minimizePlayer()" title="미니 플레이어">⬇️</button>
+        <button class="btn-ctrl" onclick="closePlayer()" title="닫기">✖️</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MINI PLAYER ===== -->
+<div id="miniPlayer" class="mini-player" onclick="expandPlayer(event)">
+  <div class="mini-video">
+    <video id="miniVideoEl" playsinline muted></video>
+  </div>
+  <div class="mini-info">
+    <div id="miniName" class="mini-name"></div>
+    <div id="miniType" class="mini-type"></div>
+  </div>
+  <div class="mini-actions">
+    <button class="btn-icon" onclick="event.stopPropagation();togglePlay()">
+      <span id="miniPlayBtn">▶️</span>
+    </button>
+    <button class="btn-icon" onclick="event.stopPropagation();closeMiniPlayer()">✖️</button>
+  </div>
+  <div class="mini-progress">
+    <div id="miniProgressBar" class="mini-progress-bar"></div>
+  </div>
+</div>
+
+<!-- ===== Google API ===== -->
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+
+<script>
+// ====================================================
+// CONFIG - 여기에 본인의 Client ID, API Key 입력
+// ====================================================
+// Google Cloud Console → OAuth 2.0 클라이언트 ID (웹 애플리케이션)
+const CLIENT_ID = '248961425731-ouf1u52kn7060binupf6057hesfeh5im.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
+
+// ====================================================
+// STATE
+// ====================================================
+let tokenClient;
+let accessToken = null;
+let currentFolderId = null;
+let files = [];          // DriveItem[]
+let currentIndex = -1;
+let isPlayerExpanded = false;
+let isMiniPlayerActive = false;
+
+const video = document.getElementById('videoEl');
+
+// ====================================================
+// GOOGLE AUTH
+// ====================================================
+function handleLogin() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: (resp) => {
+      if (resp.error) return;
+      accessToken = resp.access_token;
+      showScreen('folderScreen');
+      loadLastFolder();
+    },
+  });
+  tokenClient.requestAccessToken();
+}
+
+// ====================================================
+// SCREENS
+// ====================================================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ====================================================
+// FOLDER
+// ====================================================
+function extractFolderId(url) {
+  const m = url.match(/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function loadLastFolder() {
+  const last = localStorage.getItem('dp_last_folder');
+  if (last) {
+    document.getElementById('folderInput').value = last;
+    document.getElementById('lastFolderBtn').classList.remove('hidden');
+  }
+}
+
+function useLastFolder() {
+  const last = localStorage.getItem('dp_last_folder');
+  if (last) {
+    document.getElementById('folderInput').value = last;
+    openFolder();
+  }
+}
+
+function openFolder() {
+  const url = document.getElementById('folderInput').value.trim();
+  const fid = extractFolderId(url);
+  if (!fid) {
+    document.getElementById('folderError').textContent = '올바른 구글 드라이브 폴더 URL이 아닙니다';
+    return;
+  }
+  document.getElementById('folderError').textContent = '';
+  localStorage.setItem('dp_last_folder', url);
+  currentFolderId = fid;
+  showScreen('homeScreen');
+  loadFiles();
+}
+
+function changeFolder() {
+  showScreen('folderScreen');
+  loadLastFolder();
+}
+
+// ====================================================
+// FILE LIST
+// ====================================================
+async function loadFiles() {
+  const grid = document.getElementById('fileGrid');
+  const wrap = document.getElementById('gridWrap');
+  grid.innerHTML = '<div class="grid-loading"><div class="spinner"></div></div>';
+
+  try {
+    const query = `'${currentFolderId}' in parents and trashed = false and (mimeType contains 'video/' or mimeType contains 'audio/')`;
+    const resp = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}` +
+      `&fields=files(id,name,mimeType,thumbnailLink,size)&orderBy=name&pageSize=500`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const data = await resp.json();
+    files = (data.files || []).map(f => ({
+      id: f.id,
+      name: f.name,
+      mimeType: f.mimeType || '',
+      thumbnailLink: f.thumbnailLink || null,
+      size: f.size ? parseInt(f.size) : null,
+      isVideo: (f.mimeType || '').startsWith('video/'),
+      isAudio: (f.mimeType || '').startsWith('audio/'),
+    }));
+    renderGrid();
+  } catch (e) {
+    grid.innerHTML = `<div class="grid-empty"><div class="icon">⚠️</div><div>파일을 불러올 수 없습니다</div><button class="btn-text" onclick="loadFiles()">다시 시도</button></div>`;
+  }
+}
+
+function refreshFiles() { loadFiles(); }
+
+function renderGrid() {
+  const grid = document.getElementById('fileGrid');
+  if (files.length === 0) {
+    grid.innerHTML = '<div class="grid-empty"><div class="icon">🎬</div><div>재생 가능한 파일이 없습니다</div></div>';
+    return;
+  }
+  grid.innerHTML = files.map((f, i) => `
+    <div class="file-card" onclick="startPlay(${i})">
+      <div class="file-thumb">
+        ${f.thumbnailLink ? `<img src="${f.thumbnailLink}" alt="" loading="lazy">` : `<span style="font-size:36px;opacity:.4">${f.isVideo ? '🎬' : '🎵'}</span>`}
+        <span class="play-icon">▶</span>
+        <span class="type-badge">${f.isVideo ? '영상' : '음악'}</span>
+      </div>
+      <div class="file-info">
+        <div class="file-name">${escHtml(f.name)}</div>
+        ${f.size ? `<div class="file-size">${fmtSize(f.size)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+// ====================================================
+// PLAYER
+// ====================================================
+async function startPlay(index) {
+  currentIndex = index;
+  const file = files[index];
+  const url = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`;
+
+  showScreen('playerScreen');
+  isPlayerExpanded = true;
+  hideMiniPlayer();
+
+  // Setup video/audio
+  const wrap = document.getElementById('videoWrap');
+  const audioArt = document.getElementById('audioArt');
+
+  if (file.isVideo) {
+    wrap.classList.add('fullscreen-video');
+    audioArt.classList.add('hidden');
+    video.style.display = 'block';
+  } else {
+    wrap.classList.add('fullscreen-video');
+    audioArt.classList.remove('hidden');
+    document.getElementById('audioTitle').textContent = file.name;
+    video.style.display = 'none';
+  }
+
+  video.src = url;
+  // Set auth header via fetch + blob for CORS
+  try {
+    showBuffering(true);
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    if (file.isVideo) {
+      video.src = blobUrl;
+      video.style.display = 'block';
+    } else {
+      video.src = blobUrl;
+      video.style.display = 'none';
+    }
+    video.play();
+  } catch (e) {
+    showBuffering(false);
+    alert('파일을 재생할 수 없습니다: ' + e.message);
+  }
+
+  updatePlayerUI();
+}
+
+function togglePlay() {
+  if (video.paused) video.play();
+  else video.pause();
+}
+
+function seekBy(seconds) {
+  video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + seconds));
+  // Show indicator
+  const el = seconds < 0 ? document.getElementById('seekLeft') : document.getElementById('seekRight');
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 500);
+}
+
+function playPrev() {
+  if (currentIndex > 0) startPlay(currentIndex - 1);
+}
+
+function playNext() {
+  if (currentIndex < files.length - 1) startPlay(currentIndex + 1);
+}
+
+function closePlayer() {
+  video.pause();
+  video.src = '';
+  isPlayerExpanded = false;
+  hideMiniPlayer();
+  showScreen('homeScreen');
+}
+
+function updatePlayerUI() {
+  const f = files[currentIndex];
+  if (!f) return;
+  document.querySelector('.player-title')?.textContent;
+}
+
+// ====================================================
+// MINI PLAYER
+// ====================================================
+function minimizePlayer() {
+  isPlayerExpanded = false;
+  showScreen('homeScreen');
+  showMiniPlayer();
+}
+
+function showMiniPlayer() {
+  const f = files[currentIndex];
+  if (!f) return;
+  isMiniPlayerActive = true;
+  document.getElementById('miniPlayer').classList.add('active');
+  document.getElementById('miniName').textContent = f.name;
+  document.getElementById('miniType').textContent = f.isVideo ? '영상' : '음악';
+  document.getElementById('gridWrap').classList.add('with-mini');
+
+  // Mirror video to mini player
+  const miniVid = document.getElementById('miniVideoEl');
+  if (f.isVideo && video.src) {
+    miniVid.src = video.src;
+    miniVid.currentTime = video.currentTime;
+    miniVid.play().catch(() => {});
+  }
+}
+
+function hideMiniPlayer() {
+  isMiniPlayerActive = false;
+  document.getElementById('miniPlayer').classList.remove('active');
+  document.getElementById('gridWrap').classList.remove('with-mini');
+  const miniVid = document.getElementById('miniVideoEl');
+  miniVid.pause();
+  miniVid.src = '';
+}
+
+function expandPlayer(e) {
+  isPlayerExpanded = true;
+  hideMiniPlayer();
+  showScreen('playerScreen');
+}
+
+function closeMiniPlayer() {
+  video.pause();
+  video.src = '';
+  hideMiniPlayer();
+  currentIndex = -1;
+}
+
+// ====================================================
+// BUFFERING
+// ====================================================
+function showBuffering(show) {
+  document.getElementById('buffering').classList.toggle('active', show);
+}
+
+// ====================================================
+// VIDEO EVENTS
+// ====================================================
+video.addEventListener('waiting', () => showBuffering(true));
+video.addEventListener('canplay', () => showBuffering(false));
+video.addEventListener('playing', () => {
+  showBuffering(false);
+  document.getElementById('playBtn').textContent = '⏸️';
+  document.getElementById('miniPlayBtn').textContent = '⏸️';
+});
+video.addEventListener('pause', () => {
+  document.getElementById('playBtn').textContent = '▶️';
+  document.getElementById('miniPlayBtn').textContent = '▶️';
+});
+video.addEventListener('ended', () => {
+  // 자동으로 다음 곡 재생
+  if (currentIndex < files.length - 1) playNext();
+});
+video.addEventListener('timeupdate', () => {
+  const cur = video.currentTime;
+  const dur = video.duration || 0;
+  const pct = dur > 0 ? (cur / dur) * 100 : 0;
+
+  document.getElementById('progressPlayed').style.width = pct + '%';
+  document.getElementById('progressThumb').style.left = pct + '%';
+  document.getElementById('timeDisplay').textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+
+  // Mini player progress
+  if (isMiniPlayerActive) {
+    document.getElementById('miniProgressBar').style.width = pct + '%';
+  }
+});
+video.addEventListener('progress', () => {
+  if (video.buffered.length > 0) {
+    const buffEnd = video.buffered.end(video.buffered.length - 1);
+    const dur = video.duration || 0;
+    const pct = dur > 0 ? (buffEnd / dur) * 100 : 0;
+    document.getElementById('progressBuffered').style.width = pct + '%';
+  }
+});
+
+// ====================================================
+// PROGRESS BAR SEEK
+// ====================================================
+const progressWrap = document.getElementById('progressWrap');
+let isSeeking = false;
+
+function seekFromEvent(e) {
+  const rect = progressWrap.getBoundingClientRect();
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const pct = Math.max(0, Math.min(1, x / rect.width));
+  video.currentTime = pct * (video.duration || 0);
+}
+
+progressWrap.addEventListener('mousedown', (e) => { isSeeking = true; seekFromEvent(e); });
+document.addEventListener('mousemove', (e) => { if (isSeeking) seekFromEvent(e); });
+document.addEventListener('mouseup', () => { isSeeking = false; });
+progressWrap.addEventListener('touchstart', (e) => { isSeeking = true; seekFromEvent(e); }, { passive: true });
+progressWrap.addEventListener('touchmove', (e) => { if (isSeeking) seekFromEvent(e); }, { passive: true });
+progressWrap.addEventListener('touchend', () => { isSeeking = false; });
+
+// ====================================================
+// DOUBLE TAP (mobile 5초 seek)
+// ====================================================
+function setupDoubleTap(el, callback) {
+  let lastTap = 0;
+  el.addEventListener('touchend', (e) => {
+    const now = Date.now();
+    if (now - lastTap < 300) {
+      e.preventDefault();
+      callback();
+    }
+    lastTap = now;
+  });
+}
+
+setupDoubleTap(document.getElementById('tapLeft'), () => seekBy(-5));
+setupDoubleTap(document.getElementById('tapRight'), () => seekBy(5));
+
+// ====================================================
+// SWIPE SEEK (터치 드래그로 초단위 탐색)
+// ====================================================
+(() => {
+  const overlay = document.getElementById('swipeOverlay');
+  const indicator = document.getElementById('swipeIndicator');
+  const swipeDir = document.getElementById('swipeDir');
+  const swipeTime = document.getElementById('swipeTime');
+  const swipeDiff = document.getElementById('swipeDiff');
+
+  let swiping = false;
+  let startX = 0;
+  let startTime = 0;        // 터치 시작 시점의 currentTime
+  let seekTarget = 0;       // 현재 seek 목표 시간
+  const SENSITIVITY = 0.15; // 1px 이동 = 0.15초 (조절 가능)
+  const DEAD_ZONE = 10;     // 10px 이내 움직임은 무시 (탭과 구분)
+  let activated = false;     // DEAD_ZONE 넘었는지
+
+  overlay.addEventListener('touchstart', (e) => {
+    if (!video.duration) return;
+    swiping = true;
+    activated = false;
+    startX = e.touches[0].clientX;
+    startTime = video.currentTime;
+    seekTarget = startTime;
+  }, { passive: true });
+
+  overlay.addEventListener('touchmove', (e) => {
+    if (!swiping) return;
+    const dx = e.touches[0].clientX - startX;
+
+    // DEAD_ZONE 안이면 무시
+    if (!activated && Math.abs(dx) < DEAD_ZONE) return;
+    activated = true;
+
+    const dur = video.duration || 0;
+    const delta = dx * SENSITIVITY;
+    seekTarget = Math.max(0, Math.min(dur, startTime + delta));
+    const diffSec = Math.round(seekTarget - startTime);
+
+    // 인디케이터 표시
+    indicator.classList.add('active');
+    swipeDir.textContent = diffSec >= 0 ? '⏩' : '⏪';
+    swipeTime.textContent = fmtTime(seekTarget);
+    swipeDiff.textContent = (diffSec >= 0 ? '+' : '') + diffSec + '초';
+    swipeDiff.style.color = diffSec >= 0 ? 'var(--acc)' : 'var(--red)';
+
+    // 실시간 프로그레스 바 업데이트 (미리보기)
+    const pct = dur > 0 ? (seekTarget / dur) * 100 : 0;
+    document.getElementById('progressPlayed').style.width = pct + '%';
+    document.getElementById('progressThumb').style.left = pct + '%';
+    document.getElementById('timeDisplay').textContent = `${fmtTime(seekTarget)} / ${fmtTime(dur)}`;
+  }, { passive: true });
+
+  overlay.addEventListener('touchend', () => {
+    if (swiping && activated) {
+      video.currentTime = seekTarget;
+    }
+    swiping = false;
+    activated = false;
+    indicator.classList.remove('active');
+  });
+
+  overlay.addEventListener('touchcancel', () => {
+    swiping = false;
+    activated = false;
+    indicator.classList.remove('active');
+  });
+
+  // 마우스도 지원 (PC에서 클릭+드래그)
+  let mouseDown = false;
+
+  overlay.addEventListener('mousedown', (e) => {
+    if (!video.duration) return;
+    mouseDown = true;
+    activated = false;
+    startX = e.clientX;
+    startTime = video.currentTime;
+    seekTarget = startTime;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!mouseDown) return;
+    const dx = e.clientX - startX;
+
+    if (!activated && Math.abs(dx) < DEAD_ZONE) return;
+    activated = true;
+
+    const dur = video.duration || 0;
+    const delta = dx * SENSITIVITY;
+    seekTarget = Math.max(0, Math.min(dur, startTime + delta));
+    const diffSec = Math.round(seekTarget - startTime);
+
+    indicator.classList.add('active');
+    swipeDir.textContent = diffSec >= 0 ? '⏩' : '⏪';
+    swipeTime.textContent = fmtTime(seekTarget);
+    swipeDiff.textContent = (diffSec >= 0 ? '+' : '') + diffSec + '초';
+    swipeDiff.style.color = diffSec >= 0 ? 'var(--acc)' : 'var(--red)';
+
+    const pct = dur > 0 ? (seekTarget / dur) * 100 : 0;
+    document.getElementById('progressPlayed').style.width = pct + '%';
+    document.getElementById('progressThumb').style.left = pct + '%';
+    document.getElementById('timeDisplay').textContent = `${fmtTime(seekTarget)} / ${fmtTime(dur)}`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (mouseDown && activated) {
+      video.currentTime = seekTarget;
+    }
+    mouseDown = false;
+    activated = false;
+    indicator.classList.remove('active');
+  });
+})();
+
+// Single tap on center → toggle play
+document.getElementById('videoWrap').addEventListener('click', (e) => {
+  // Ignore taps on tap zones, swipe overlay, controls
+  if (e.target.classList.contains('tap-zone')) return;
+  if (e.target.id === 'swipeOverlay') return;
+  if (e.target.closest('.controls')) return;
+  togglePlay();
+});
+
+// ====================================================
+// KEYBOARD SHORTCUTS
+// ====================================================
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  switch (e.key) {
+    case ' ':
+    case 'k':
+      e.preventDefault();
+      togglePlay();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      seekBy(-5);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      seekBy(5);
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      video.volume = Math.min(1, video.volume + 0.1);
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      video.volume = Math.max(0, video.volume - 0.1);
+      break;
+    case 'n':
+      playNext();
+      break;
+    case 'p':
+      playPrev();
+      break;
+    case 'Escape':
+      if (isPlayerExpanded) minimizePlayer();
+      break;
+    case 'f':
+      if (video.requestFullscreen) video.requestFullscreen();
+      break;
+  }
+});
+
+// ====================================================
+// UTILS
+// ====================================================
+function fmtTime(sec) {
+  if (!sec || isNaN(sec)) return '0:00';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+  if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
+  return (bytes / 1073741824).toFixed(2) + ' GB';
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>

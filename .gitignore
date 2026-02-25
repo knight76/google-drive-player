@@ -1,0 +1,20 @@
+# IDE
+.idea/
+.vscode/
+
+.idea/.gitignore
+
+# Environment
+.env
+.env.local
+
+# Dependencies
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.md
