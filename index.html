@@ -502,134 +502,80 @@ async function startPlay(index) {
     video.style.display = 'none';
   }
 
-  showBuffering(true);
-
-  // Try MediaSource API first for better streaming
-  try {
-    await streamWithMediaSource(file.id, file.mimeType);
-  } catch (e) {
-    // Fallback to direct URL streaming
-    console.warn('MediaSource failed, using fallback:', e);
-    const streamUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&access_token=${accessToken}`;
-    video.src = streamUrl;
-    video.play().catch(() => {});
-  }
+  // Progressive streaming - fast first chunk, then continue loading
+  streamProgressive(file.id);
 
   updatePlayerUI();
 }
 
-// MediaSource API streaming with Range requests
-async function streamWithMediaSource(fileId, mimeType) {
-  // Get codec from MIME type
-  const codecMap = {
-    'video/mp4': 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
-    'video/webm': 'video/webm; codecs="vp8, vorbis"',
-    'audio/mp4': 'audio/mp4; codecs="mp4a.40.2"',
-    'audio/mpeg': 'audio/mpeg',
-    'audio/webm': 'audio/webm; codecs="opus"',
-  };
+// Progressive blob streaming - download in chunks but use blob URL
+async function streamProgressive(fileId) {
+  showBuffering(true);
 
-  const sourceCodec = codecMap[mimeType] || mimeType;
-
-  // Check if MediaSource is supported and codec is supported
-  if (!window.MediaSource || !MediaSource.isTypeSupported(sourceCodec)) {
-    throw new Error('MediaSource not supported for ' + mimeType);
-  }
-
-  const ms = new MediaSource();
-  video.src = URL.createObjectURL(ms);
-
-  return new Promise((resolve, reject) => {
-    ms.addEventListener('sourceopen', async () => {
-      try {
-        const sb = ms.addSourceBuffer(sourceCodec);
-        const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
-        let offset = 0;
-        let isFirstChunk = true;
-
-        while (offset >= 0) {
-          // Fetch chunk with Range header
-          const endByte = offset + CHUNK_SIZE - 1;
-          const resp = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Range': `bytes=${offset}-${endByte}`,
-              },
-            }
-          );
-
-          if (!resp.ok && resp.status !== 206) {
-            throw new Error('Range request failed: ' + resp.status);
-          }
-
-          const buffer = await resp.arrayBuffer();
-
-          // Wait for source buffer to be ready
-          await new Promise((res) => {
-            if (sb.updating) {
-              sb.addEventListener('updateend', res, { once: true });
-            } else {
-              res();
-            }
-          });
-
-          sb.appendBuffer(buffer);
-
-          // Start playback on first chunk
-          if (isFirstChunk) {
-            isFirstChunk = false;
-            video.play().catch(() => {});
-          }
-
-          // Check if this is the last chunk
-          const contentRange = resp.headers.get('Content-Range');
-          if (contentRange) {
-            const match = contentRange.match(/bytes \d+-\d+\/(\d+)/);
-            if (match) {
-              const totalSize = parseInt(match[1]);
-              if (offset + buffer.byteLength >= totalSize) {
-                // Wait for final append to complete
-                await new Promise((res) => {
-                  sb.addEventListener('updateend', res, { once: true });
-                });
-                if (ms.readyState === 'open') {
-                  ms.endOfStream();
-                }
-                offset = -1; // End loop
-              } else {
-                offset += buffer.byteLength;
-              }
-            } else {
-              offset += buffer.byteLength;
-            }
-          } else {
-            // No Content-Range header, might be last chunk
-            if (buffer.byteLength < CHUNK_SIZE) {
-              await new Promise((res) => {
-                sb.addEventListener('updateend', res, { once: true });
-              });
-              if (ms.readyState === 'open') {
-                ms.endOfStream();
-              }
-              offset = -1;
-            } else {
-              offset += buffer.byteLength;
-            }
-          }
-        }
-
-        resolve();
-      } catch (e) {
-        reject(e);
+  try {
+    // Get file size first
+    const headResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        method: 'HEAD',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
       }
-    });
+    );
 
-    ms.addEventListener('error', () => {
-      reject(new Error('MediaSource error'));
-    });
-  });
+    const fileSize = parseInt(headResp.headers.get('Content-Length') || '0');
+    const FIRST_CHUNK = 10 * 1024 * 1024; // First 10MB for quick start
+
+    // If file is small, just download it all
+    if (fileSize <= FIRST_CHUNK) {
+      const resp = await fetch(
+        `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+        { headers: { 'Authorization': `Bearer ${accessToken}` } }
+      );
+      const blob = await resp.blob();
+      video.src = URL.createObjectURL(blob);
+      video.play().catch(() => {});
+      return;
+    }
+
+    // For large files: download first chunk quickly, then full file in background
+    const firstResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Range': `bytes=0-${FIRST_CHUNK - 1}`
+        }
+      }
+    );
+
+    const firstBlob = await firstResp.blob();
+    video.src = URL.createObjectURL(firstBlob);
+    video.play().catch(() => {});
+
+    // Continue downloading full file in background and replace when ready
+    fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      { headers: { 'Authorization': `Bearer ${accessToken}` } }
+    )
+    .then(resp => resp.blob())
+    .then(fullBlob => {
+      // Only replace if still playing the same video
+      const currentTime = video.currentTime;
+      if (currentIndex === files.findIndex(f => f.id === fileId)) {
+        video.src = URL.createObjectURL(fullBlob);
+        video.currentTime = currentTime;
+        video.play().catch(() => {});
+      }
+    })
+    .catch(err => console.warn('Background download failed:', err));
+
+  } catch (e) {
+    console.error('Progressive streaming failed:', e);
+    // Final fallback: simple URL with token
+    const streamUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&access_token=${accessToken}`;
+    video.src = streamUrl;
+    video.play().catch(() => {});
+  }
 }
 
 function togglePlay() {
