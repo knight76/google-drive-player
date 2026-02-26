@@ -481,7 +481,6 @@ function renderGrid() {
 async function startPlay(index) {
   currentIndex = index;
   const file = files[index];
-  const url = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media`;
 
   showScreen('playerScreen');
   isPlayerExpanded = true;
@@ -502,26 +501,12 @@ async function startPlay(index) {
     video.style.display = 'none';
   }
 
-  video.src = url;
-  // Set auth header via fetch + blob for CORS
-  try {
-    showBuffering(true);
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    const blob = await resp.blob();
-    const blobUrl = URL.createObjectURL(blob);
+  // 스트리밍 재생 - URL에 토큰 붙여서 video 태그가 직접 스트리밍
+  const streamUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&access_token=${accessToken}`;
 
-    if (file.isVideo) {
-      video.src = blobUrl;
-      video.style.display = 'block';
-    } else {
-      video.src = blobUrl;
-      video.style.display = 'none';
-    }
-    video.play();
-  } catch (e) {
-    showBuffering(false);
-    alert('파일을 재생할 수 없습니다: ' + e.message);
-  }
+  video.src = streamUrl;
+  showBuffering(true);
+  video.play().catch(() => {});
 
   updatePlayerUI();
 }
