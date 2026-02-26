@@ -550,14 +550,35 @@ async function streamWithMSE(fileId) {
   video.src = URL.createObjectURL(mediaSource);
 
   return new Promise((resolve, reject) => {
-    let sourceBuffer;
+    let sourceBuffer = null;
     let isFirstChunk = true;
     const chunkQueue = [];
     let isAppending = false;
+    let isCancelled = false;
+    let reader = null;
+
+    const cleanup = (reason) => {
+      isCancelled = true;
+      if (reader) {
+        reader.cancel().catch(() => {});
+      }
+      if (mediaSource.readyState === 'open') {
+        try {
+          mediaSource.endOfStream();
+        } catch (e) {}
+      }
+      reject(new Error(reason));
+    };
 
     const appendNextChunk = async () => {
-      if (isAppending || chunkQueue.length === 0) return;
+      if (isCancelled || isAppending || chunkQueue.length === 0) return;
       if (!sourceBuffer || sourceBuffer.updating) return;
+
+      // Check MediaSource state
+      if (mediaSource.readyState !== 'open') {
+        cleanup('MediaSource closed unexpectedly');
+        return;
+      }
 
       isAppending = true;
       const chunk = chunkQueue.shift();
@@ -566,7 +587,20 @@ async function streamWithMSE(fileId) {
         sourceBuffer.appendBuffer(chunk);
 
         // Wait for append to complete
-        await new Promise(res => sourceBuffer.addEventListener('updateend', res, { once: true }));
+        await new Promise((res, rej) => {
+          const onUpdate = () => {
+            sourceBuffer.removeEventListener('updateend', onUpdate);
+            sourceBuffer.removeEventListener('error', onError);
+            res();
+          };
+          const onError = (e) => {
+            sourceBuffer.removeEventListener('updateend', onUpdate);
+            sourceBuffer.removeEventListener('error', onError);
+            rej(e);
+          };
+          sourceBuffer.addEventListener('updateend', onUpdate);
+          sourceBuffer.addEventListener('error', onError);
+        });
 
         // Start playback after first chunk
         if (isFirstChunk) {
@@ -578,8 +612,7 @@ async function streamWithMSE(fileId) {
         appendNextChunk(); // Process next chunk
       } catch (e) {
         console.error('appendBuffer failed:', e);
-        isAppending = false;
-        reject(e);
+        cleanup('SourceBuffer append failed');
       }
     };
 
@@ -597,49 +630,61 @@ async function streamWithMSE(fileId) {
           throw new Error(`Fetch failed: ${response.status}`);
         }
 
-        const reader = response.body.getReader();
+        reader = response.body.getReader();
 
         const processStream = async () => {
-          while (true) {
-            const { done, value } = await reader.read();
+          try {
+            while (!isCancelled) {
+              const { done, value } = await reader.read();
 
-            if (done) {
-              // Wait for all chunks to be appended
-              while (chunkQueue.length > 0 || isAppending) {
-                await new Promise(res => setTimeout(res, 100));
+              if (done) {
+                // Wait for all chunks to be appended
+                let waitCount = 0;
+                while ((chunkQueue.length > 0 || isAppending) && !isCancelled && waitCount < 100) {
+                  await new Promise(res => setTimeout(res, 100));
+                  waitCount++;
+                }
+
+                if (waitCount >= 100) {
+                  throw new Error('Chunk append timeout');
+                }
+
+                // End stream
+                if (!isCancelled && sourceBuffer && !sourceBuffer.updating && mediaSource.readyState === 'open') {
+                  mediaSource.endOfStream();
+                }
+                resolve();
+                break;
               }
 
-              // End stream
-              if (sourceBuffer && !sourceBuffer.updating && mediaSource.readyState === 'open') {
-                mediaSource.endOfStream();
-              }
-              resolve();
-              break;
+              // Add chunk to queue
+              chunkQueue.push(value);
+              appendNextChunk();
             }
-
-            // Add chunk to queue
-            chunkQueue.push(value);
-            appendNextChunk();
+          } catch (e) {
+            if (!isCancelled) {
+              cleanup('Stream processing failed: ' + e.message);
+            }
           }
         };
 
         processStream();
 
       } catch (e) {
-        reject(e);
+        cleanup('MSE initialization failed: ' + e.message);
       }
     });
 
     mediaSource.addEventListener('error', (e) => {
-      reject(new Error('MediaSource error'));
+      cleanup('MediaSource error');
     });
 
-    // Timeout after 30 seconds
+    // Reduced timeout: 10 seconds
     setTimeout(() => {
-      if (mediaSource.readyState === 'open') {
-        reject(new Error('MSE timeout'));
+      if (!isCancelled && mediaSource.readyState !== 'ended') {
+        cleanup('MSE timeout (10s)');
       }
-    }, 30000);
+    }, 10000);
   });
 }
 
