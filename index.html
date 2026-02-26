@@ -205,7 +205,7 @@ input{font-family:inherit}
   <div class="login-logo">▶</div>
   <div class="login-title">DrivePlayer</div>
   <div class="login-sub">구글 드라이브에서 바로 재생</div>
-  <button class="btn-google" onclick="handleLogin()">
+  <button id="loginBtn" class="btn-google">
     <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
     Google 계정으로 로그인
   </button>
@@ -216,12 +216,11 @@ input{font-family:inherit}
   <div class="folder-icon">📁</div>
   <div style="font-size:18px;font-weight:700">폴더 링크를 입력하세요</div>
   <div class="folder-wrap">
-    <input id="folderInput" class="folder-input" placeholder="https://drive.google.com/drive/folders/..." 
-           onkeydown="if(event.key==='Enter')openFolder()">
+    <input id="folderInput" class="folder-input" placeholder="https://drive.google.com/drive/folders/...">
     <div id="folderError" class="folder-error"></div>
   </div>
-  <button class="btn-primary" onclick="openFolder()">폴더 열기</button>
-  <button id="lastFolderBtn" class="btn-text hidden" onclick="useLastFolder()">📂 마지막 사용한 폴더</button>
+  <button id="openFolderBtn" class="btn-primary">폴더 열기</button>
+  <button id="lastFolderBtn" class="btn-text hidden">📂 마지막 사용한 폴더</button>
 </div>
 
 <!-- ===== HOME SCREEN ===== -->
@@ -229,8 +228,8 @@ input{font-family:inherit}
   <div class="topbar">
     <div class="topbar-title"><span>▶</span> DrivePlayer</div>
     <div class="topbar-actions">
-      <button class="btn-icon" onclick="refreshFiles()" title="새로고침">🔄</button>
-      <button class="btn-icon" onclick="changeFolder()" title="폴더 변경">📁</button>
+      <button id="refreshBtn" class="btn-icon" title="새로고침">🔄</button>
+      <button id="changeFolderBtn" class="btn-icon" title="폴더 변경">📁</button>
     </div>
   </div>
   <div id="gridWrap" class="grid-wrap">
@@ -294,22 +293,22 @@ input{font-family:inherit}
         <span id="timeDisplay" class="time-display">0:00 / 0:00</span>
       </div>
       <div class="ctrl-center">
-        <button class="btn-ctrl" onclick="playPrev()" title="이전">⏮</button>
-        <button class="btn-ctrl" onclick="seekBy(-5)" title="5초 뒤로">⏪</button>
-        <button id="playBtn" class="btn-ctrl big" onclick="togglePlay()" title="재생/일시정지">▶️</button>
-        <button class="btn-ctrl" onclick="seekBy(5)" title="5초 앞으로">⏩</button>
-        <button class="btn-ctrl" onclick="playNext()" title="다음">⏭</button>
+        <button id="prevBtn" class="btn-ctrl" title="이전">⏮</button>
+        <button id="seekBackBtn" class="btn-ctrl" title="5초 뒤로">⏪</button>
+        <button id="playBtn" class="btn-ctrl big" title="재생/일시정지">▶️</button>
+        <button id="seekFwdBtn" class="btn-ctrl" title="5초 앞으로">⏩</button>
+        <button id="nextBtn" class="btn-ctrl" title="다음">⏭</button>
       </div>
       <div class="ctrl-right">
-        <button class="btn-ctrl" onclick="minimizePlayer()" title="미니 플레이어">⬇️</button>
-        <button class="btn-ctrl" onclick="closePlayer()" title="닫기">✖️</button>
+        <button id="minimizeBtn" class="btn-ctrl" title="미니 플레이어">⬇️</button>
+        <button id="closePlayerBtn" class="btn-ctrl" title="닫기">✖️</button>
       </div>
     </div>
   </div>
 </div>
 
 <!-- ===== MINI PLAYER ===== -->
-<div id="miniPlayer" class="mini-player" onclick="expandPlayer(event)">
+<div id="miniPlayer" class="mini-player">
   <div class="mini-video">
     <canvas id="miniCanvas" width="200" height="112"></canvas>
   </div>
@@ -318,10 +317,10 @@ input{font-family:inherit}
     <div id="miniType" class="mini-type"></div>
   </div>
   <div class="mini-actions">
-    <button class="btn-icon" onclick="event.stopPropagation();togglePlay()">
+    <button id="miniPlayToggleBtn" class="btn-icon">
       <span id="miniPlayBtn">▶️</span>
     </button>
-    <button class="btn-icon" onclick="event.stopPropagation();closeMiniPlayer()">✖️</button>
+    <button id="miniCloseBtn" class="btn-icon">✖️</button>
   </div>
   <div class="mini-progress">
     <div id="miniProgressBar" class="mini-progress-bar"></div>
@@ -945,6 +944,43 @@ function escHtml(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+
+// ====================================================
+// INIT - Event Listeners (타이밍 문제 해결)
+// ====================================================
+// Login screen
+document.getElementById('loginBtn').addEventListener('click', handleLogin);
+
+// Folder screen
+document.getElementById('folderInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') openFolder();
+});
+document.getElementById('openFolderBtn').addEventListener('click', openFolder);
+document.getElementById('lastFolderBtn').addEventListener('click', useLastFolder);
+
+// Home screen
+document.getElementById('refreshBtn').addEventListener('click', refreshFiles);
+document.getElementById('changeFolderBtn').addEventListener('click', changeFolder);
+
+// Player controls
+document.getElementById('prevBtn').addEventListener('click', playPrev);
+document.getElementById('seekBackBtn').addEventListener('click', () => seekBy(-5));
+document.getElementById('playBtn').addEventListener('click', togglePlay);
+document.getElementById('seekFwdBtn').addEventListener('click', () => seekBy(5));
+document.getElementById('nextBtn').addEventListener('click', playNext);
+document.getElementById('minimizeBtn').addEventListener('click', minimizePlayer);
+document.getElementById('closePlayerBtn').addEventListener('click', closePlayer);
+
+// Mini player
+document.getElementById('miniPlayer').addEventListener('click', expandPlayer);
+document.getElementById('miniPlayToggleBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  togglePlay();
+});
+document.getElementById('miniCloseBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeMiniPlayer();
+});
 </script>
 </body>
 </html>
