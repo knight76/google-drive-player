@@ -178,7 +178,7 @@ input{font-family:inherit}
   transition:transform .3s;cursor:pointer}
 .mini-player.active{display:flex}
 .mini-video{width:100px;height:100%;background:#000;flex-shrink:0;position:relative;overflow:hidden}
-.mini-video video{width:100%;height:100%;object-fit:cover}
+.mini-video canvas{width:100%;height:100%;object-fit:cover}
 .mini-info{flex:1;padding:0 12px;overflow:hidden}
 .mini-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mini-type{font-size:11px;color:var(--tx3)}
@@ -242,7 +242,7 @@ input{font-family:inherit}
 <div id="playerScreen" class="screen">
   <!-- Video/Audio area -->
   <div id="videoWrap" class="video-wrap">
-    <video id="videoEl" playsinline></video>
+    <video id="videoEl" playsinline preload="metadata"></video>
 
     <!-- Audio artwork (shown for audio files) -->
     <div id="audioArt" class="audio-art hidden">
@@ -311,7 +311,7 @@ input{font-family:inherit}
 <!-- ===== MINI PLAYER ===== -->
 <div id="miniPlayer" class="mini-player" onclick="expandPlayer(event)">
   <div class="mini-video">
-    <video id="miniVideoEl" playsinline muted></video>
+    <canvas id="miniCanvas" width="200" height="112"></canvas>
   </div>
   <div class="mini-info">
     <div id="miniName" class="mini-name"></div>
@@ -350,6 +350,7 @@ let files = [];          // DriveItem[]
 let currentIndex = -1;
 let isPlayerExpanded = false;
 let isMiniPlayerActive = false;
+let miniMirrorAnimationId = null;
 
 const video = document.getElementById('videoEl');
 
@@ -433,7 +434,7 @@ async function loadFiles() {
     const query = `'${currentFolderId}' in parents and trashed = false and (mimeType contains 'video/' or mimeType contains 'audio/')`;
     const resp = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}` +
-      `&fields=files(id,name,mimeType,thumbnailLink,size)&orderBy=name&pageSize=500`,
+      `&fields=files(id,name,mimeType,thumbnailLink,size)&orderBy=name&pageSize=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const data = await resp.json();
@@ -501,14 +502,134 @@ async function startPlay(index) {
     video.style.display = 'none';
   }
 
-  // 스트리밍 재생 - URL에 토큰 붙여서 video 태그가 직접 스트리밍
-  const streamUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&access_token=${accessToken}`;
-
-  video.src = streamUrl;
   showBuffering(true);
-  video.play().catch(() => {});
+
+  // Try MediaSource API first for better streaming
+  try {
+    await streamWithMediaSource(file.id, file.mimeType);
+  } catch (e) {
+    // Fallback to direct URL streaming
+    console.warn('MediaSource failed, using fallback:', e);
+    const streamUrl = `https://www.googleapis.com/drive/v3/files/${file.id}?alt=media&access_token=${accessToken}`;
+    video.src = streamUrl;
+    video.play().catch(() => {});
+  }
 
   updatePlayerUI();
+}
+
+// MediaSource API streaming with Range requests
+async function streamWithMediaSource(fileId, mimeType) {
+  // Get codec from MIME type
+  const codecMap = {
+    'video/mp4': 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+    'video/webm': 'video/webm; codecs="vp8, vorbis"',
+    'audio/mp4': 'audio/mp4; codecs="mp4a.40.2"',
+    'audio/mpeg': 'audio/mpeg',
+    'audio/webm': 'audio/webm; codecs="opus"',
+  };
+
+  const sourceCodec = codecMap[mimeType] || mimeType;
+
+  // Check if MediaSource is supported and codec is supported
+  if (!window.MediaSource || !MediaSource.isTypeSupported(sourceCodec)) {
+    throw new Error('MediaSource not supported for ' + mimeType);
+  }
+
+  const ms = new MediaSource();
+  video.src = URL.createObjectURL(ms);
+
+  return new Promise((resolve, reject) => {
+    ms.addEventListener('sourceopen', async () => {
+      try {
+        const sb = ms.addSourceBuffer(sourceCodec);
+        const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+        let offset = 0;
+        let isFirstChunk = true;
+
+        while (offset >= 0) {
+          // Fetch chunk with Range header
+          const endByte = offset + CHUNK_SIZE - 1;
+          const resp = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Range': `bytes=${offset}-${endByte}`,
+              },
+            }
+          );
+
+          if (!resp.ok && resp.status !== 206) {
+            throw new Error('Range request failed: ' + resp.status);
+          }
+
+          const buffer = await resp.arrayBuffer();
+
+          // Wait for source buffer to be ready
+          await new Promise((res) => {
+            if (sb.updating) {
+              sb.addEventListener('updateend', res, { once: true });
+            } else {
+              res();
+            }
+          });
+
+          sb.appendBuffer(buffer);
+
+          // Start playback on first chunk
+          if (isFirstChunk) {
+            isFirstChunk = false;
+            video.play().catch(() => {});
+          }
+
+          // Check if this is the last chunk
+          const contentRange = resp.headers.get('Content-Range');
+          if (contentRange) {
+            const match = contentRange.match(/bytes \d+-\d+\/(\d+)/);
+            if (match) {
+              const totalSize = parseInt(match[1]);
+              if (offset + buffer.byteLength >= totalSize) {
+                // Wait for final append to complete
+                await new Promise((res) => {
+                  sb.addEventListener('updateend', res, { once: true });
+                });
+                if (ms.readyState === 'open') {
+                  ms.endOfStream();
+                }
+                offset = -1; // End loop
+              } else {
+                offset += buffer.byteLength;
+              }
+            } else {
+              offset += buffer.byteLength;
+            }
+          } else {
+            // No Content-Range header, might be last chunk
+            if (buffer.byteLength < CHUNK_SIZE) {
+              await new Promise((res) => {
+                sb.addEventListener('updateend', res, { once: true });
+              });
+              if (ms.readyState === 'open') {
+                ms.endOfStream();
+              }
+              offset = -1;
+            } else {
+              offset += buffer.byteLength;
+            }
+          }
+        }
+
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+    });
+
+    ms.addEventListener('error', () => {
+      reject(new Error('MediaSource error'));
+    });
+  });
 }
 
 function togglePlay() {
@@ -564,12 +685,17 @@ function showMiniPlayer() {
   document.getElementById('miniType').textContent = f.isVideo ? '영상' : '음악';
   document.getElementById('gridWrap').classList.add('with-mini');
 
-  // Mirror video to mini player
-  const miniVid = document.getElementById('miniVideoEl');
+  // Mirror video to mini player via canvas (no double streaming)
   if (f.isVideo && video.src) {
-    miniVid.src = video.src;
-    miniVid.currentTime = video.currentTime;
-    miniVid.play().catch(() => {});
+    const canvas = document.getElementById('miniCanvas');
+    const ctx = canvas.getContext('2d');
+    function drawMiniFrame() {
+      if (isMiniPlayerActive && !video.paused) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      miniMirrorAnimationId = requestAnimationFrame(drawMiniFrame);
+    }
+    drawMiniFrame();
   }
 }
 
@@ -577,9 +703,12 @@ function hideMiniPlayer() {
   isMiniPlayerActive = false;
   document.getElementById('miniPlayer').classList.remove('active');
   document.getElementById('gridWrap').classList.remove('with-mini');
-  const miniVid = document.getElementById('miniVideoEl');
-  miniVid.pause();
-  miniVid.src = '';
+
+  // Stop canvas mirroring
+  if (miniMirrorAnimationId) {
+    cancelAnimationFrame(miniMirrorAnimationId);
+    miniMirrorAnimationId = null;
+  }
 }
 
 function expandPlayer(e) {
